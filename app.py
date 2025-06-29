@@ -1,5 +1,21 @@
 import streamlit as st
-import cv2
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError as e:
+    st.error(f"❌ OpenCV import error: {str(e)}")
+    st.info("💡 Trying to install opencv-python-headless...")
+    import subprocess
+    import sys
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
+        import cv2
+        CV2_AVAILABLE = True
+        st.success("✅ OpenCV installed successfully!")
+    except Exception as install_error:
+        st.error(f"❌ Failed to install OpenCV: {str(install_error)}")
+        CV2_AVAILABLE = False
+
 import numpy as np
 import mediapipe as mp
 from PIL import Image, ImageDraw
@@ -46,7 +62,7 @@ class PostureAnalyzer:
     
     def detect_pose(self, image: np.ndarray) -> Optional[Dict]:
         """Detect pose landmarks using MediaPipe"""
-        if self.pose is None:
+        if self.pose is None or not CV2_AVAILABLE:
             return self._simulate_pose_landmarks(image.shape)
         
         try:
@@ -273,7 +289,7 @@ class PostureAnalyzer:
 
     def draw_skeleton(self, image: np.ndarray, pose_data: Dict, analysis: Dict) -> np.ndarray:
         """Draw skeleton overlay with risk-based coloring"""
-        if pose_data is None or not analysis['valid_detection']:
+        if pose_data is None or not analysis['valid_detection'] or not CV2_AVAILABLE:
             return image
         
         overlay = image.copy()
@@ -335,6 +351,12 @@ def main():
     st.markdown("**Real-time ergonomic assessment for surgical professionals**")
     st.markdown("*Built with MediaPipe Pose and modern Python libraries*")
     
+    # Show OpenCV status
+    if not CV2_AVAILABLE:
+        st.warning("⚠️ OpenCV is not available. Some features may be limited.")
+    else:
+        st.success("✅ OpenCV is available and working properly.")
+    
     # Initialize analyzer
     if 'analyzer' not in st.session_state:
         with st.spinner("Loading pose detection model..."):
@@ -395,16 +417,23 @@ def main():
                 # Load uploaded image
                 image = Image.open(uploaded_file)
                 image_np = np.array(image)
-                if len(image_np.shape) == 3 and image_np.shape[2] == 3:
-                    image_np = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+                if len(image_np.shape) == 3 and image_np.shape[2] == 3 and CV2_AVAILABLE:
+                    try:
+                        image_np = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+                    except:
+                        pass  # Keep original format if conversion fails
             else:
                 # Demo mode - create synthetic image
                 demo_type = st.session_state.get('demo_mode', 'good')
                 image_np = np.zeros((480, 640, 3), dtype=np.uint8)
                 image_np.fill(50)  # Dark background
                 # Add some visual elements to make it look like a medical setting
-                cv2.putText(image_np, f"DEMO: {demo_type.upper()} POSTURE", (50, 50), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                if CV2_AVAILABLE:
+                    try:
+                        cv2.putText(image_np, f"DEMO: {demo_type.upper()} POSTURE", (50, 50), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                    except:
+                        pass  # Skip text if OpenCV fails
             
             col1, col2 = st.columns(2)
             
@@ -413,7 +442,13 @@ def main():
                 if uploaded_file:
                     st.image(image, use_container_width=True)
                 else:
-                    st.image(cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    if CV2_AVAILABLE:
+                        try:
+                            st.image(cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB), use_container_width=True)
+                        except:
+                            st.image(image_np, use_container_width=True)
+                    else:
+                        st.image(image_np, use_container_width=True)
             
             with col2:
                 st.subheader("Posture Analysis")
@@ -430,7 +465,13 @@ def main():
                         skeleton_image = st.session_state.analyzer.draw_skeleton(image_np, pose_data, analysis)
                         
                         # Display results
-                        st.image(cv2.cvtColor(skeleton_image, cv2.COLOR_BGR2RGB), use_container_width=True)
+                        if CV2_AVAILABLE:
+                            try:
+                                st.image(cv2.cvtColor(skeleton_image, cv2.COLOR_BGR2RGB), use_container_width=True)
+                            except:
+                                st.image(skeleton_image, use_container_width=True)
+                        else:
+                            st.image(skeleton_image, use_container_width=True)
                         
                         # Save to history
                         analysis_record = {
