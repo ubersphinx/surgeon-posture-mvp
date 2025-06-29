@@ -37,28 +37,60 @@ ERGONOMIC_THRESHOLDS = {
 
 class PostureAnalyzer:
     def __init__(self):
-        """Initialize the posture analyzer with MediaPipe Pose"""
+        """Initialize the posture analyzer with MediaPipe"""
+        self.pose = None
+        self.mp_pose = None
+        self.mp_drawing = None
+        self.mp_drawing_styles = None
+        
         try:
             # Initialize MediaPipe Pose
             self.mp_pose = mp.solutions.pose
             self.mp_drawing = mp.solutions.drawing_utils
             self.mp_drawing_styles = mp.solutions.drawing_styles
             
-            # Create pose detection model
-            self.pose = self.mp_pose.Pose(
-                static_image_mode=True,
-                model_complexity=2,
-                enable_segmentation=False,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
-            )
+            # Try to create pose detection model with different configurations
+            model_configs = [
+                {
+                    'static_image_mode': True,
+                    'model_complexity': 1,  # Try lighter model first
+                    'enable_segmentation': False,
+                    'min_detection_confidence': 0.5,
+                    'min_tracking_confidence': 0.5
+                },
+                {
+                    'static_image_mode': True,
+                    'model_complexity': 0,  # Lightest model
+                    'enable_segmentation': False,
+                    'min_detection_confidence': 0.3,
+                    'min_tracking_confidence': 0.3
+                }
+            ]
             
-            st.success("✅ MediaPipe Pose model loaded successfully!")
+            for config in model_configs:
+                try:
+                    self.pose = self.mp_pose.Pose(**config)
+                    # Test the model with a simple operation
+                    test_image = np.zeros((100, 100, 3), dtype=np.uint8)
+                    test_image.fill(128)
+                    results = self.pose.process(test_image)
+                    st.success(f"✅ MediaPipe Pose model loaded successfully with config: {config['model_complexity']}")
+                    break
+                except Exception as model_error:
+                    st.warning(f"⚠️ Failed to load MediaPipe model with config {config['model_complexity']}: {str(model_error)}")
+                    continue
+            
+            if self.pose is None:
+                raise Exception("All MediaPipe model configurations failed")
+                
         except Exception as e:
             st.error(f"❌ Error loading MediaPipe model: {str(e)}")
-            st.info("💡 For demo purposes, using simulated pose detection")
+            st.info("💡 Using simulated pose detection for demo purposes")
+            st.info("🔧 This is normal on Streamlit Cloud due to permission restrictions")
             self.pose = None
             self.mp_pose = None
+            self.mp_drawing = None
+            self.mp_drawing_styles = None
     
     def detect_pose(self, image: np.ndarray) -> Optional[Dict]:
         """Detect pose landmarks using MediaPipe"""
@@ -134,6 +166,51 @@ class PostureAnalyzer:
         ]
         
         return {'landmarks': landmarks, 'pose_landmarks': None}
+    
+    def _create_demo_pose_data(self, image_shape: Tuple, demo_type: str = 'good') -> Dict:
+        """Create demo pose data with different posture scenarios"""
+        h, w = image_shape[:2]
+        
+        if demo_type == 'good':
+            # Good posture - minimal angles
+            landmarks = [
+                {'x': 0.5, 'y': 0.2, 'z': 0.0, 'visibility': 0.9},   # nose
+                {'x': 0.42, 'y': 0.17, 'z': 0.0, 'visibility': 0.7}, # left_ear
+                {'x': 0.58, 'y': 0.17, 'z': 0.0, 'visibility': 0.7}, # right_ear
+                {'x': 0.4, 'y': 0.35, 'z': 0.0, 'visibility': 0.9},  # left_shoulder
+                {'x': 0.6, 'y': 0.35, 'z': 0.0, 'visibility': 0.9},  # right_shoulder
+                {'x': 0.42, 'y': 0.75, 'z': 0.0, 'visibility': 0.9}, # left_hip
+                {'x': 0.58, 'y': 0.75, 'z': 0.0, 'visibility': 0.9}, # right_hip
+            ]
+        else:
+            # Poor posture - exaggerated angles
+            landmarks = [
+                {'x': 0.6, 'y': 0.25, 'z': 0.0, 'visibility': 0.9},   # nose (forward)
+                {'x': 0.52, 'y': 0.22, 'z': 0.0, 'visibility': 0.7}, # left_ear
+                {'x': 0.68, 'y': 0.22, 'z': 0.0, 'visibility': 0.7}, # right_ear
+                {'x': 0.35, 'y': 0.4, 'z': 0.0, 'visibility': 0.9},  # left_shoulder (asymmetric)
+                {'x': 0.65, 'y': 0.35, 'z': 0.0, 'visibility': 0.9},  # right_shoulder
+                {'x': 0.45, 'y': 0.8, 'z': 0.0, 'visibility': 0.9}, # left_hip (tilted)
+                {'x': 0.55, 'y': 0.75, 'z': 0.0, 'visibility': 0.9}, # right_hip
+            ]
+        
+        # Fill in remaining landmarks with default values
+        full_landmarks = []
+        for i in range(33):  # MediaPipe Pose has 33 landmarks
+            if i < len(landmarks):
+                full_landmarks.append(landmarks[i])
+            else:
+                # Generate reasonable default positions
+                x = 0.5 + (i % 3 - 1) * 0.1
+                y = 0.2 + (i // 3) * 0.1
+                full_landmarks.append({
+                    'x': max(0.1, min(0.9, x)),
+                    'y': max(0.1, min(1.2, y)),
+                    'z': 0.0,
+                    'visibility': 0.7
+                })
+        
+        return {'landmarks': full_landmarks, 'pose_landmarks': None}
     
     def calculate_angle(self, p1: Tuple[float, float], p2: Tuple[float, float], p3: Tuple[float, float]) -> float:
         """Calculate angle between three points"""
@@ -370,7 +447,18 @@ def main():
     st.sidebar.header("⚙️ Configuration")
     
     # Model info
-    st.sidebar.info("🤖 **AI Model**: MediaPipe Pose v2\n📊 **Accuracy**: ~95% landmark detection\n⚡ **Speed**: Real-time processing")
+    if st.session_state.analyzer.pose is not None:
+        st.sidebar.success("🤖 **AI Model**: MediaPipe Pose v2 (Active)")
+        st.sidebar.info("📊 **Accuracy**: ~95% landmark detection\n⚡ **Speed**: Real-time processing")
+    else:
+        st.sidebar.warning("🤖 **AI Model**: Demo Mode (MediaPipe unavailable)")
+        st.sidebar.info("📊 **Demo Data**: Simulated pose landmarks\n⚡ **Purpose**: Showcase functionality")
+        st.sidebar.markdown("""
+        **Why Demo Mode?**
+        - MediaPipe requires system permissions
+        - Streamlit Cloud has security restrictions
+        - Demo shows realistic posture analysis
+        """)
     
     # Threshold adjustments
     st.sidebar.subheader("Ergonomic Thresholds")
@@ -455,7 +543,12 @@ def main():
                 
                 with st.spinner("Analyzing posture..."):
                     # Detect pose
-                    pose_data = st.session_state.analyzer.detect_pose(image_np)
+                    if uploaded_file is not None:
+                        pose_data = st.session_state.analyzer.detect_pose(image_np)
+                    else:
+                        # Use demo pose data for demo mode
+                        demo_type = st.session_state.get('demo_mode', 'good')
+                        pose_data = st.session_state.analyzer._create_demo_pose_data(image_np.shape, demo_type)
                     
                     if pose_data is not None:
                         # Analyze posture
@@ -472,6 +565,14 @@ def main():
                                 st.image(skeleton_image, use_container_width=True)
                         else:
                             st.image(skeleton_image, use_container_width=True)
+                        
+                        # Add demo mode indicator
+                        if 'demo_mode' in st.session_state:
+                            demo_type = st.session_state.get('demo_mode', 'good')
+                            if demo_type == 'good':
+                                st.info("🎯 **Demo Mode**: Showing analysis for good posture scenario")
+                            else:
+                                st.warning("⚠️ **Demo Mode**: Showing analysis for poor posture scenario")
                         
                         # Save to history
                         analysis_record = {

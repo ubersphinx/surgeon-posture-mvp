@@ -53,17 +53,46 @@ If you encounter OpenCV import errors on Streamlit Cloud:
    - Restart the deployment
    - Check the deployment logs for specific error messages
 
+### MediaPipe Permission Error
+
+If you encounter MediaPipe permission errors on Streamlit Cloud:
+
+1. **Error message:** `Permission denied: pose_landmark_heavy.tflite`
+   - This is normal on Streamlit Cloud due to security restrictions
+   - The app automatically switches to demo mode
+
+2. **Demo Mode:**
+   - The app will show simulated pose detection
+   - All functionality remains available
+   - Realistic posture analysis is demonstrated
+
+3. **Alternative requirements:**
+   ```bash
+   # Try using the cloud-optimized requirements
+   pip install -r requirements_cloud.txt
+   ```
+
+4. **Local vs Cloud:**
+   - MediaPipe works fully on local development
+   - Streamlit Cloud uses demo mode for security
+   - Both provide the same user experience
+
 ### MediaPipe Issues
 
 If MediaPipe fails to load:
 
 1. **Check version compatibility:**
-   - MediaPipe >= 0.10.9 is required
+   - MediaPipe >= 0.10.5 is required
    - Python 3.8-3.11 is supported
 
 2. **Memory issues:**
    - Reduce model complexity in the code
    - Use `model_complexity=1` instead of `2`
+
+3. **Permission issues:**
+   - Common on cloud platforms
+   - App automatically uses demo mode
+   - No action required from user
 
 ## 📁 Project Structure
 
